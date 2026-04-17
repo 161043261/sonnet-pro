@@ -1,0 +1,132 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"reflect"
+	"lark_rpc_v2/internal/codec"
+	"lark_rpc_v2/internal/protocol"
+	"lark_rpc_v2/internal/transport"
+)
+
+type Handler struct {
+	codec codec.Codec
+}
+
+func NewHandler(s any, opts ...HandleOption) (*Handler, error) {
+	h := &Handler{}
+
+	for _, opt := range opts {
+		if err := opt(h); err != nil {
+			return nil, err
+		}
+	}
+
+	if h.codec == nil {
+		return nil, fmt.Errorf("codec must not be nil")
+	}
+
+	return h, nil
+}
+
+func (h *Handler) Process(conn *transport.TCPConnection, msg *protocol.Message, server any) {
+
+	// log.Println("Debug: ", h.server, " ", msg.Header.ServiceName, " ", msg.Header.MethodName)
+	result, err := h.invoke(
+		context.Background(),
+		server,
+		msg.Header.ServiceName,
+		msg.Header.MethodName,
+		msg.Body,
+	)
+
+	if err != nil {
+		h.writeError(conn, msg.Header.RequestID, err.Error())
+		return
+	}
+
+	var body []byte
+	if result != nil {
+		var marshalErr error
+		body, marshalErr = h.codec.Marshal(result)
+		if marshalErr != nil {
+			log.Println("marshal error:", marshalErr)
+			h.writeError(conn, msg.Header.RequestID, marshalErr.Error())
+			return
+		}
+	}
+
+	resp := &protocol.Message{
+		Header: &protocol.Header{
+			RequestID:   msg.Header.RequestID,
+			Compression: codec.CompressionGzip,
+		},
+		Body: body,
+	}
+
+	conn.Write(resp)
+}
+
+func (h *Handler) writeError(conn *transport.TCPConnection, requestID uint64, errMsg string) {
+	resp := &protocol.Message{
+		Header: &protocol.Header{
+			RequestID:   requestID,
+			Error:       errMsg,
+			Compression: codec.CompressionGzip,
+		},
+	}
+	conn.Write(resp)
+}
+
+func (h *Handler) invoke(ctx context.Context, service any, serviceName, methodName string, body []byte) (any, error) {
+
+	serviceValue := reflect.ValueOf(service)
+	method := serviceValue.MethodByName(methodName)
+	if !method.IsValid() {
+		return nil, fmt.Errorf("method not found: %s.%s", serviceName, methodName)
+	}
+
+	methodType := method.Type()
+	numIn := methodType.NumIn()
+	numOut := methodType.NumOut()
+
+	args := make([]reflect.Value, 0, numIn)
+
+	// net/rpc style
+	// func(req *Req, reply *Resp) error
+
+	if numIn == 2 &&
+		methodType.In(0).Kind() == reflect.Ptr &&
+		methodType.In(1).Kind() == reflect.Ptr &&
+		numOut == 1 &&
+		methodType.Out(0).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+
+		// Construct req
+		reqType := methodType.In(0)
+		req := reflect.New(reqType.Elem())
+
+		if len(body) > 0 {
+			if err := h.codec.Unmarshal(body, req.Interface()); err != nil {
+				return nil, err
+			}
+		}
+
+		// Construct reply
+		replyType := methodType.In(1)
+		reply := reflect.New(replyType.Elem())
+
+		args = append(args, req)
+		args = append(args, reply)
+
+		results := method.Call(args)
+
+		// Handle error
+		if errVal := results[0].Interface(); errVal != nil {
+			return nil, errVal.(error)
+		}
+
+		return reply.Elem().Interface(), nil
+	}
+	return nil, nil
+}

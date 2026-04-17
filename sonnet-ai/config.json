@@ -1,0 +1,38 @@
+{
+  "main_config": {
+    "app_name": "lark_ai",
+    "host": "0.0.0.0",
+    "port": 9090
+  },
+  "redis_config": {
+    "db": 0,
+    "host": "127.0.0.1",
+    "password": "",
+    "port": 6379
+  },
+  "mysql_config": {
+    "charset": "utf8mb4",
+    "database_name": "lark_ai",
+    "host": "127.0.0.1",
+    "password": "pass",
+    "port": 3306,
+    "user": "root"
+  },
+  "jwt_config": {
+    "expire_duration": 8760,
+    "issuer": "lark_ai",
+    "key": "lark_ai",
+    "subject": "lark_ai"
+  },
+  "kafka_config": {
+    "brokers": ["127.0.0.1:9092"],
+    "topic": "message_topic"
+  },
+  "ollama_config": {
+    "base_url": "http://localhost:11434",
+    "model_name": "qwen3",
+    "embedding_model": "nomic-embed-text",
+    "dimension": 1024,
+    "docs_dir": "./docs"
+  }
+}

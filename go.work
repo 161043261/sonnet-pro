@@ -1,0 +1,14 @@
+go 1.25.4
+
+use (
+	./lark-ai
+	./lark-ai/common/mcp
+	./lark-cache
+	./lark-cache-v2
+	./lark-orm
+	./lark-rpc
+	./lark-rpc-v2
+	./lark-web
+)
+
+replace google.golang.org/genproto => google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de
